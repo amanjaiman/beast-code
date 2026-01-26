@@ -1,9 +1,26 @@
-function App() {
+import { AppProvider } from './context/AppContext';
+import { Header } from './components/Header';
+import { ProblemList } from './components/ProblemList';
+
+function AppContent() {
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <h1 className="text-4xl font-bold text-gray-800">Welcome to React</h1>
+    <div className="min-h-screen bg-[var(--bg-primary)] bg-mesh transition-colors duration-300">
+      <Header />
+      
+      {/* Main content */}
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+        <ProblemList />
+      </main>
     </div>
-  )
+  );
 }
 
-export default App
+function App() {
+  return (
+    <AppProvider>
+      <AppContent />
+    </AppProvider>
+  );
+}
+
+export default App;
