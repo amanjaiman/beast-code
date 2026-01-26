@@ -8,7 +8,7 @@
 /* CSS Custom Properties */
 :root {
   /* Typography */
-  --font-display: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   
   /* Light mode colors */
   --bg-primary: #fafafa;
