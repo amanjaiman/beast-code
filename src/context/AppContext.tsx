@@ -45,6 +45,7 @@ interface AppContextType {
   // Actions
   toggleCompleted: (problemId: number) => void;
   toggleFlagged: (problemId: number) => void;
+  updateNotes: (problemId: number, notes: string) => void;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
   setHideCompleted: (hide: boolean) => void;
@@ -110,6 +111,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         [problemId]: {
           ...current,
           flagged: !current.flagged,
+        },
+      };
+    });
+  };
+
+  const updateNotes = (problemId: number, notes: string) => {
+    setUserProgress((prev) => {
+      const current = prev[problemId] || { ...DEFAULT_PROGRESS };
+      return {
+        ...prev,
+        [problemId]: {
+          ...current,
+          notes: notes || undefined, // Remove empty strings to save storage
         },
       };
     });
@@ -187,6 +201,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       stats,
       toggleCompleted,
       toggleFlagged,
+      updateNotes,
       setTheme,
       toggleTheme,
       setHideCompleted,

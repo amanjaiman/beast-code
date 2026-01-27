@@ -389,6 +389,29 @@
     background-color: var(--text-muted);
   }
   
+  /* Minimal scrollbar for notes textarea */
+  .notes-textarea {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+  }
+  
+  .notes-textarea::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  .notes-textarea::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .notes-textarea::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 2px;
+  }
+  
+  .notes-textarea::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-muted);
+  }
+  
   /* Hover lift effect */
   .hover-lift {
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;

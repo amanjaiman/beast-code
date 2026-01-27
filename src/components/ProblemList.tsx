@@ -127,6 +127,9 @@ export function ProblemList() {
   // State for search and random spinner
   const [searchQuery, setSearchQuery] = useState('');
   const [isSpinning, setIsSpinning] = useState(false);
+  
+  // State for accordion notes - only one problem's notes can be expanded at a time
+  const [expandedNoteId, setExpandedNoteId] = useState<number | null>(null);
 
   // Filter problems by search query and bookmarked status
   const filteredProblemsByDifficulty = useMemo(() => {
@@ -311,7 +314,13 @@ export function ProblemList() {
       <div className="divide-y divide-[var(--border-subtle)]">
         {activeProblems.length > 0 ? (
           activeProblems.map((problem, idx) => (
-            <ProblemRow key={problem.id} problem={problem} index={idx} />
+            <ProblemRow 
+              key={problem.id} 
+              problem={problem} 
+              index={idx}
+              expandedNoteId={expandedNoteId}
+              setExpandedNoteId={setExpandedNoteId}
+            />
           ))
         ) : (
           <div className="p-8 text-center">

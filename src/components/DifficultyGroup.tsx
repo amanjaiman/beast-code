@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { ProblemRow } from './ProblemRow';
 import type { Difficulty, Problem } from '../types';
@@ -49,6 +50,9 @@ export function DifficultyGroup({ difficulty, problems, index = 0 }: DifficultyG
   const { isGroupCollapsed, toggleGroupCollapsed, stats } = useApp();
   const isCollapsed = isGroupCollapsed(difficulty);
   const config = difficultyConfig[difficulty];
+  
+  // State for accordion notes - only one problem's notes can be expanded at a time
+  const [expandedNoteId, setExpandedNoteId] = useState<number | null>(null);
   
   // Get completion stats for this group (from stats, not filtered problems array)
   const completedInGroup = stats.byDifficulty[difficulty].completed;
@@ -142,7 +146,13 @@ export function DifficultyGroup({ difficulty, problems, index = 0 }: DifficultyG
           <div className="divide-y divide-[var(--border-subtle)]">
             {problems.length > 0 ? (
               problems.map((problem, idx) => (
-                <ProblemRow key={problem.id} problem={problem} index={idx} />
+                <ProblemRow 
+                  key={problem.id} 
+                  problem={problem} 
+                  index={idx}
+                  expandedNoteId={expandedNoteId}
+                  setExpandedNoteId={setExpandedNoteId}
+                />
               ))
             ) : (
               <div className="p-8 text-center">

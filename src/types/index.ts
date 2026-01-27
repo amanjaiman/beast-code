@@ -8,6 +8,7 @@ import type { Difficulty } from '../data/problems';
 export interface ProblemProgress {
   completed: boolean;
   flagged: boolean;
+  notes?: string;
 }
 
 // All user progress keyed by problem ID
