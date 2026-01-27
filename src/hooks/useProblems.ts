@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { problems, type Problem, type Difficulty } from '../data/problems';
-import { seededShuffle } from '../utils/shuffle';
 import type { UserProgressMap } from '../types';
 
 export interface ProblemsByDifficulty {
@@ -20,19 +19,13 @@ export interface ProblemsStats {
 }
 
 /**
- * Hook that provides shuffled problems grouped by difficulty
+ * Hook that provides problems grouped by difficulty
  * and computed statistics based on user progress.
  */
 export function useProblems(
-  seed: number,
   userProgress: UserProgressMap,
   hideCompleted: boolean
 ) {
-  // Shuffle problems once based on seed (memoized)
-  const shuffledProblems = useMemo(() => {
-    return seededShuffle(problems, seed);
-  }, [seed]);
-
   // Group by difficulty
   const problemsByDifficulty = useMemo((): ProblemsByDifficulty => {
     const grouped: ProblemsByDifficulty = {
@@ -41,12 +34,12 @@ export function useProblems(
       Hard: [],
     };
 
-    for (const problem of shuffledProblems) {
+    for (const problem of problems) {
       grouped[problem.difficulty].push(problem);
     }
 
     return grouped;
-  }, [shuffledProblems]);
+  }, []);
 
   // Filter out completed if hideCompleted is true
   const filteredProblemsByDifficulty = useMemo((): ProblemsByDifficulty => {
@@ -95,13 +88,13 @@ export function useProblems(
   // Get non-completed problems for random selection
   const getEligibleProblems = useMemo(() => {
     return (selectedDifficulties: Difficulty[]): Problem[] => {
-      return shuffledProblems.filter(
+      return problems.filter(
         (p) =>
           selectedDifficulties.includes(p.difficulty) &&
           !userProgress[p.id]?.completed
       );
     };
-  }, [shuffledProblems, userProgress]);
+  }, [userProgress]);
 
   return {
     problemsByDifficulty: filteredProblemsByDifficulty,

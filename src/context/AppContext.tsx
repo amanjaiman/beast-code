@@ -8,7 +8,6 @@ import {
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useProblems, type ProblemsStats, type ProblemsByDifficulty } from '../hooks/useProblems';
 import { weightedRandomPick } from '../utils/random';
-import { generateSeed } from '../utils/shuffle';
 import {
   type Difficulty,
   type Problem,
@@ -24,15 +23,15 @@ const STORAGE_KEYS = {
   SETTINGS: 'beast-settings',
 } as const;
 
-// Default settings (seed generated on first load)
+// Default settings
 const createDefaultSettings = (): AppSettings => ({
   theme: 'light',
-  shuffleSeed: generateSeed(),
   activeTab: 'Easy',
   hideCompleted: false,
   showCategories: false,
   showBookmarkedOnly: false,
   categoryLastPicked: {},
+  collapsedGroups: {},
 });
 
 // Context type
@@ -54,6 +53,8 @@ interface AppContextType {
   setActiveTab: (difficulty: Difficulty) => void;
   pickRandomProblem: (difficulties: Difficulty[]) => Problem | null;
   getProblemProgress: (problemId: number) => ProblemProgress;
+  isGroupCollapsed: (difficulty: Difficulty) => boolean;
+  toggleGroupCollapsed: (difficulty: Difficulty) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -74,7 +75,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Get problems data
   const { problemsByDifficulty, stats, getEligibleProblems } = useProblems(
-    settings.shuffleSeed,
     userProgress,
     settings.hideCompleted
   );
@@ -165,6 +165,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return userProgress[problemId] || { ...DEFAULT_PROGRESS };
   };
 
+  const isGroupCollapsed = (difficulty: Difficulty): boolean => {
+    return settings.collapsedGroups[difficulty] ?? false;
+  };
+
+  const toggleGroupCollapsed = (difficulty: Difficulty): void => {
+    setSettings((prev) => ({
+      ...prev,
+      collapsedGroups: {
+        ...prev.collapsedGroups,
+        [difficulty]: !prev.collapsedGroups[difficulty],
+      },
+    }));
+  };
+
   const value = useMemo(
     (): AppContextType => ({
       userProgress,
@@ -181,6 +195,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActiveTab,
       pickRandomProblem,
       getProblemProgress,
+      isGroupCollapsed,
+      toggleGroupCollapsed,
     }),
     [userProgress, settings, problemsByDifficulty, stats]
   );
