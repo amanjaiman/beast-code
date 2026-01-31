@@ -25,14 +25,14 @@ const tabConfig = {
   },
 };
 
-// Toggle pill component
-function TogglePill({ 
-  label, 
+// Icon-only toggle button component with tooltip
+function IconToggle({ 
+  tooltip, 
   icon, 
   isActive, 
   onToggle 
 }: { 
-  label: string; 
+  tooltip: string; 
   icon: React.ReactNode;
   isActive: boolean; 
   onToggle: () => void;
@@ -40,8 +40,9 @@ function TogglePill({
   return (
     <button
       onClick={onToggle}
+      title={tooltip}
       className={`
-        flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium
+        flex items-center justify-center w-8 h-8 rounded-lg
         transition-all duration-200 border
         ${isActive 
           ? 'bg-slate-100 dark:bg-slate-500/20 border-slate-300 dark:border-slate-500/40 text-[var(--text-primary)]' 
@@ -50,11 +51,9 @@ function TogglePill({
       `}
       role="switch"
       aria-checked={isActive}
+      aria-label={tooltip}
     >
-      <span className={`transition-colors ${isActive ? 'text-[var(--text-secondary)]' : ''}`}>
-        {icon}
-      </span>
-      {label}
+      {icon}
     </button>
   );
 }
@@ -118,10 +117,11 @@ function DifficultyTab({
 }
 
 export function ProblemList() {
-  const { problemsByDifficulty, settings, setHideCompleted, setShowCategories, setShowBookmarkedOnly, stats, pickRandomProblem, setActiveTab, getProblemProgress } = useApp();
+  const { problemsByDifficulty, settings, setHideCompleted, setShowCategories, setShowBookmarkedOnly, setSortByCompletion, stats, pickRandomProblem, setActiveTab, getProblemProgress } = useApp();
   const hideCompleted = settings.hideCompleted;
   const showCategories = settings.showCategories;
   const showBookmarkedOnly = settings.showBookmarkedOnly;
+  const sortByCompletion = settings.sortByCompletion;
   const activeTab = settings.activeTab;
   
   // State for search and random spinner
@@ -131,9 +131,45 @@ export function ProblemList() {
   // State for accordion notes - only one problem's notes can be expanded at a time
   const [expandedNoteId, setExpandedNoteId] = useState<number | null>(null);
 
-  // Filter problems by search query and bookmarked status
+  // Helper to sort problems by completion date
+  const sortByCompletionDate = (problems: Problem[]): Problem[] => {
+    if (!sortByCompletion) return problems;
+    
+    // Partition into completed and uncompleted
+    const completed: Problem[] = [];
+    const uncompleted: Problem[] = [];
+    
+    for (const problem of problems) {
+      const progress = getProblemProgress(problem.id);
+      if (progress.completed) {
+        completed.push(problem);
+      } else {
+        uncompleted.push(problem);
+      }
+    }
+    
+    // Sort completed by completedAt (oldest first, "legacy" treated as oldest)
+    completed.sort((a, b) => {
+      const progressA = getProblemProgress(a.id);
+      const progressB = getProblemProgress(b.id);
+      const dateA = progressA.completedAt;
+      const dateB = progressB.completedAt;
+      
+      // "legacy" or undefined goes first (oldest)
+      if (dateA === 'legacy' || !dateA) return -1;
+      if (dateB === 'legacy' || !dateB) return 1;
+      
+      // Sort by ISO date string (works because ISO format is lexicographically sortable)
+      return dateA.localeCompare(dateB);
+    });
+    
+    // Concatenate: completed first (oldest to newest), then uncompleted in original order
+    return [...completed, ...uncompleted];
+  };
+
+  // Filter problems by search query and bookmarked status, then optionally sort by completion
   const filteredProblemsByDifficulty = useMemo(() => {
-    const filterProblems = (problems: Problem[]) => {
+    const filterAndSortProblems = (problems: Problem[]) => {
       let filtered = problems;
       
       // Filter by bookmarked status if enabled
@@ -147,15 +183,18 @@ export function ProblemList() {
         filtered = filtered.filter(p => p.name.toLowerCase().includes(query));
       }
       
+      // Sort by completion date if enabled
+      filtered = sortByCompletionDate(filtered);
+      
       return filtered;
     };
     
     return {
-      Easy: filterProblems(problemsByDifficulty.Easy),
-      Medium: filterProblems(problemsByDifficulty.Medium),
-      Hard: filterProblems(problemsByDifficulty.Hard),
+      Easy: filterAndSortProblems(problemsByDifficulty.Easy),
+      Medium: filterAndSortProblems(problemsByDifficulty.Medium),
+      Hard: filterAndSortProblems(problemsByDifficulty.Hard),
     };
-  }, [problemsByDifficulty, searchQuery, showBookmarkedOnly, getProblemProgress]);
+  }, [problemsByDifficulty, searchQuery, showBookmarkedOnly, sortByCompletion, getProblemProgress]);
 
   // Get problems for the active tab
   const activeProblems = filteredProblemsByDifficulty[activeTab];
@@ -233,7 +272,7 @@ export function ProblemList() {
 
         {/* Controls */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Random button */}
+          {/* Random button - keeps text */}
           <button
             onClick={handlePickRandom}
             disabled={!hasRemainingProblems}
@@ -261,8 +300,9 @@ export function ProblemList() {
           {/* Divider */}
           <div className="w-px h-6 bg-[var(--border-color)]" />
           
-          <TogglePill
-            label="Categories"
+          {/* Icon-only toggles */}
+          <IconToggle
+            tooltip="Show categories"
             icon={
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
@@ -272,8 +312,8 @@ export function ProblemList() {
             onToggle={() => setShowCategories(!showCategories)}
           />
           
-          <TogglePill
-            label="Hide done"
+          <IconToggle
+            tooltip="Hide completed"
             icon={
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
@@ -283,8 +323,8 @@ export function ProblemList() {
             onToggle={() => setHideCompleted(!hideCompleted)}
           />
           
-          <TogglePill
-            label="Bookmarked"
+          <IconToggle
+            tooltip="Show bookmarked only"
             icon={
               <svg className="w-4 h-4" fill={showBookmarkedOnly ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
@@ -292,6 +332,17 @@ export function ProblemList() {
             }
             isActive={showBookmarkedOnly}
             onToggle={() => setShowBookmarkedOnly(!showBookmarkedOnly)}
+          />
+          
+          <IconToggle
+            tooltip="Sort by completion date"
+            icon={
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+              </svg>
+            }
+            isActive={sortByCompletion}
+            onToggle={() => setSortByCompletion(!sortByCompletion)}
           />
         </div>
       </div>

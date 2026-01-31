@@ -30,6 +30,7 @@ const createDefaultSettings = (): AppSettings => ({
   hideCompleted: false,
   showCategories: false,
   showBookmarkedOnly: false,
+  sortByCompletion: false,
   categoryLastPicked: {},
   collapsedGroups: {},
 });
@@ -51,6 +52,7 @@ interface AppContextType {
   setHideCompleted: (hide: boolean) => void;
   setShowCategories: (show: boolean) => void;
   setShowBookmarkedOnly: (show: boolean) => void;
+  setSortByCompletion: (sort: boolean) => void;
   setActiveTab: (difficulty: Difficulty) => void;
   pickRandomProblem: (difficulties: Difficulty[]) => Problem | null;
   getProblemProgress: (problemId: number) => ProblemProgress;
@@ -89,15 +91,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [settings.theme]);
 
+  // Migrate legacy completions on first load (completed but no completedAt)
+  useEffect(() => {
+    const needsMigration = Object.entries(userProgress).some(
+      ([, progress]) => progress.completed && !progress.completedAt
+    );
+    
+    if (needsMigration) {
+      setUserProgress((prev) => {
+        const migrated = { ...prev };
+        for (const [id, progress] of Object.entries(migrated)) {
+          if (progress.completed && !progress.completedAt) {
+            migrated[Number(id)] = {
+              ...progress,
+              completedAt: 'legacy',
+            };
+          }
+        }
+        return migrated;
+      });
+    }
+  }, []); // Only run once on mount
+
   // Actions
   const toggleCompleted = (problemId: number) => {
     setUserProgress((prev) => {
       const current = prev[problemId] || { ...DEFAULT_PROGRESS };
+      const willBeCompleted = !current.completed;
       return {
         ...prev,
         [problemId]: {
           ...current,
-          completed: !current.completed,
+          completed: willBeCompleted,
+          completedAt: willBeCompleted ? new Date().toISOString() : undefined,
         },
       };
     });
@@ -150,6 +176,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setShowBookmarkedOnly = (showBookmarkedOnly: boolean) => {
     setSettings((prev) => ({ ...prev, showBookmarkedOnly }));
+  };
+
+  const setSortByCompletion = (sortByCompletion: boolean) => {
+    setSettings((prev) => ({ ...prev, sortByCompletion }));
   };
 
   const setActiveTab = (difficulty: Difficulty) => {
@@ -207,6 +237,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setHideCompleted,
       setShowCategories,
       setShowBookmarkedOnly,
+      setSortByCompletion,
       setActiveTab,
       pickRandomProblem,
       getProblemProgress,

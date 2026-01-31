@@ -1,7 +1,25 @@
+import { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import { ContributionGraph } from './ContributionGraph';
 
 export function Header() {
-  const { settings, toggleTheme, stats } = useApp();
+  const { settings, toggleTheme, stats, userProgress } = useApp();
+  const [showGraph, setShowGraph] = useState(false);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const handleMouseEnter = () => {
+    // Add delay to prevent accidental triggers
+    hoverTimeoutRef.current = setTimeout(() => {
+      setShowGraph(true);
+    }, 200);
+  };
+  
+  const handleMouseLeave = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    setShowGraph(false);
+  };
   const isDark = settings.theme === 'dark';
   
   // Get stats for each difficulty
@@ -94,51 +112,64 @@ export function Header() {
 
           {/* Right side */}
           <div className="flex items-center gap-4">
-            {/* NeetCode-style Segmented Progress Bar */}
-            <div className="hidden sm:flex items-center gap-3 px-3 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-              {/* Progress bar with difficulty sections */}
-              <div 
-                className="w-72 h-3 rounded-full overflow-hidden flex"
-                title={`Easy: ${easyCompleted}/${easyTotal} | Medium: ${mediumCompleted}/${mediumTotal} | Hard: ${hardCompleted}/${hardTotal}`}
-              >
-                {/* Easy section - green */}
+            {/* NeetCode-style Segmented Progress Bar with hover popup */}
+            <div 
+              className="relative hidden sm:block"
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+            >
+              <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-color)] cursor-pointer hover:border-[var(--text-muted)] transition-colors">
+                {/* Progress bar with difficulty sections */}
                 <div 
-                  className="h-full bg-emerald-500/20 dark:bg-emerald-500/20 relative overflow-hidden"
-                  style={{ width: `${easyWidthPercent}%` }}
+                  className="w-72 h-3 rounded-full overflow-hidden flex"
+                  title={`Easy: ${easyCompleted}/${easyTotal} | Medium: ${mediumCompleted}/${mediumTotal} | Hard: ${hardCompleted}/${hardTotal}`}
                 >
+                  {/* Easy section - green */}
                   <div 
-                    className="absolute inset-y-0 left-0 bg-emerald-500 dark:bg-emerald-400 transition-all duration-500"
-                    style={{ width: `${easyFillPercent}%` }}
-                  />
+                    className="h-full bg-emerald-500/20 dark:bg-emerald-500/20 relative overflow-hidden"
+                    style={{ width: `${easyWidthPercent}%` }}
+                  >
+                    <div 
+                      className="absolute inset-y-0 left-0 bg-emerald-500 dark:bg-emerald-400 transition-all duration-500"
+                      style={{ width: `${easyFillPercent}%` }}
+                    />
+                  </div>
+                  
+                  {/* Medium section - amber/yellow */}
+                  <div 
+                    className="h-full bg-amber-500/20 dark:bg-amber-500/20 relative overflow-hidden"
+                    style={{ width: `${mediumWidthPercent}%` }}
+                  >
+                    <div 
+                      className="absolute inset-y-0 left-0 bg-amber-500 dark:bg-amber-400 transition-all duration-500"
+                      style={{ width: `${mediumFillPercent}%` }}
+                    />
+                  </div>
+                  
+                  {/* Hard section - red/rose */}
+                  <div 
+                    className="h-full bg-rose-500/20 dark:bg-rose-500/20 relative overflow-hidden"
+                    style={{ width: `${hardWidthPercent}%` }}
+                  >
+                    <div 
+                      className="absolute inset-y-0 left-0 bg-rose-500 dark:bg-rose-400 transition-all duration-500"
+                      style={{ width: `${hardFillPercent}%` }}
+                    />
+                  </div>
                 </div>
                 
-                {/* Medium section - amber/yellow */}
-                <div 
-                  className="h-full bg-amber-500/20 dark:bg-amber-500/20 relative overflow-hidden"
-                  style={{ width: `${mediumWidthPercent}%` }}
-                >
-                  <div 
-                    className="absolute inset-y-0 left-0 bg-amber-500 dark:bg-amber-400 transition-all duration-500"
-                    style={{ width: `${mediumFillPercent}%` }}
-                  />
-                </div>
-                
-                {/* Hard section - red/rose */}
-                <div 
-                  className="h-full bg-rose-500/20 dark:bg-rose-500/20 relative overflow-hidden"
-                  style={{ width: `${hardWidthPercent}%` }}
-                >
-                  <div 
-                    className="absolute inset-y-0 left-0 bg-rose-500 dark:bg-rose-400 transition-all duration-500"
-                    style={{ width: `${hardFillPercent}%` }}
-                  />
-                </div>
+                {/* Count */}
+                <span className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
+                  {stats.completed}<span className="text-[var(--text-muted)] font-normal">/{stats.total}</span>
+                </span>
               </div>
               
-              {/* Count */}
-              <span className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
-                {stats.completed}<span className="text-[var(--text-muted)] font-normal">/{stats.total}</span>
-              </span>
+              {/* Contribution Graph Popup - positioned to allow hovering onto it */}
+              {showGraph && (
+                <div className="absolute top-full right-0 pt-2 z-50 animate-fade-in">
+                  <ContributionGraph userProgress={userProgress} />
+                </div>
+              )}
             </div>
 
             {/* Theme toggle */}

@@ -1,6 +1,34 @@
 import { useApp } from '../context/AppContext';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Problem } from '../types';
+
+// Format completion date for display
+function formatCompletionDate(completedAt: string | undefined): string | null {
+  if (!completedAt) return null;
+  if (completedAt === 'legacy') return null; // Don't show date for legacy completions
+  
+  const date = new Date(completedAt);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const completedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  if (completedDate.getTime() === today.getTime()) {
+    return 'Today';
+  }
+  if (completedDate.getTime() === yesterday.getTime()) {
+    return 'Yesterday';
+  }
+  
+  // Check if same year
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  
+  // Different year
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 interface ProblemRowProps {
   problem: Problem;
@@ -17,6 +45,12 @@ export function ProblemRow({ problem, index = 0, expandedNoteId, setExpandedNote
   const hasNotes = Boolean(progress.notes);
   const showCategory = isCompleted && settings.showCategories;
   const [justCompleted, setJustCompleted] = useState(false);
+  
+  // Format completion date
+  const completionDateText = useMemo(() => {
+    if (!isCompleted) return null;
+    return formatCompletionDate(progress.completedAt);
+  }, [isCompleted, progress.completedAt]);
   
   // Notes state
   const isNotesExpanded = expandedNoteId === problem.id;
@@ -144,6 +178,13 @@ export function ProblemRow({ problem, index = 0, expandedNoteId, setExpandedNote
         {showCategory && (
           <span className="text-xs px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-muted)] font-medium whitespace-nowrap">
             {problem.category}
+          </span>
+        )}
+
+        {/* Completion date - only visible when completed and has a date */}
+        {isCompleted && completionDateText && (
+          <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+            {completionDateText}
           </span>
         )}
 

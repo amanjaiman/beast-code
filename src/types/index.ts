@@ -7,6 +7,7 @@ import type { Difficulty } from '../data/problems';
 // Per-problem user state
 export interface ProblemProgress {
   completed: boolean;
+  completedAt?: string;  // ISO timestamp or "legacy" for pre-tracking completions
   flagged: boolean;
   notes?: string;
 }
@@ -21,6 +22,7 @@ export interface AppSettings {
   hideCompleted: boolean;
   showCategories: boolean;          // Show category badges for completed problems
   showBookmarkedOnly: boolean;      // Show only bookmarked/flagged problems
+  sortByCompletion: boolean;        // Sort completed problems by completion date (oldest first)
   categoryLastPicked: Record<string, number>; // Category name -> timestamp for weighted random
   collapsedGroups: Record<string, boolean>;   // Difficulty group -> collapsed state
 }
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hideCompleted: false,
   showCategories: false,            // Hidden by default
   showBookmarkedOnly: false,        // Show all problems by default
+  sortByCompletion: false,          // Default sort order (not by completion date)
   categoryLastPicked: {},
   collapsedGroups: {},              // No groups collapsed by default
 };
