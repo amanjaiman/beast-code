@@ -23,9 +23,12 @@ function formatDate(date: Date): string {
   });
 }
 
-// Get the date string key (YYYY-MM-DD) for grouping
+// Get the date string key (YYYY-MM-DD) for grouping using LOCAL time
 function getDateKey(date: Date): string {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function ContributionGraph({ userProgress }: ContributionGraphProps) {
@@ -39,7 +42,9 @@ export function ContributionGraph({ userProgress }: ContributionGraphProps) {
         if (progress.completedAt === 'legacy') {
           legacy++;
         } else {
-          const dateKey = progress.completedAt.split('T')[0];
+          // Convert ISO string to Date, then get local date key
+          const date = new Date(progress.completedAt);
+          const dateKey = getDateKey(date);
           byDate[dateKey] = (byDate[dateKey] || 0) + 1;
         }
       }
