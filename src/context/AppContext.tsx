@@ -3,11 +3,19 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useCallback,
   type ReactNode,
 } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useProblems, type ProblemsStats, type ProblemsByDifficulty } from '../hooks/useProblems';
 import { weightedRandomPick } from '../utils/random';
+import {
+  exportData as exportDataUtil,
+  parseImportFile,
+  saveBackup,
+  getBackup,
+  hasBackup,
+} from '../utils/dataSync';
 import {
   type Difficulty,
   type Problem,
@@ -35,6 +43,13 @@ const createDefaultSettings = (): AppSettings => ({
   collapsedGroups: {},
 });
 
+// Import result type
+export interface ImportResult {
+  success: boolean;
+  warnings?: string[];
+  error?: string;
+}
+
 // Context type
 interface AppContextType {
   // State
@@ -58,6 +73,12 @@ interface AppContextType {
   getProblemProgress: (problemId: number) => ProblemProgress;
   isGroupCollapsed: (difficulty: Difficulty) => boolean;
   toggleGroupCollapsed: (difficulty: Difficulty) => void;
+  
+  // Data sync actions
+  exportData: () => void;
+  importData: (file: File) => Promise<ImportResult>;
+  restoreBackup: () => boolean;
+  hasBackup: () => boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -223,6 +244,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  // Data sync actions
+  const exportData = useCallback(() => {
+    exportDataUtil(userProgress, settings);
+  }, [userProgress, settings]);
+
+  const importData = useCallback(async (file: File): Promise<ImportResult> => {
+    const result = await parseImportFile(file);
+    
+    if (!result.success || !result.data) {
+      return {
+        success: false,
+        error: result.error,
+      };
+    }
+
+    // Backup current data before importing
+    saveBackup(userProgress, settings);
+
+    // Apply imported data
+    setUserProgress(result.data.progress);
+    setSettings(result.data.settings);
+
+    return {
+      success: true,
+      warnings: result.warnings,
+    };
+  }, [userProgress, settings, setUserProgress, setSettings]);
+
+  const restoreBackupFn = useCallback((): boolean => {
+    const backup = getBackup();
+    if (!backup) return false;
+
+    setUserProgress(backup.progress);
+    setSettings(backup.settings);
+    return true;
+  }, [setUserProgress, setSettings]);
+
+  const hasBackupFn = useCallback((): boolean => {
+    return hasBackup();
+  }, []);
+
   const value = useMemo(
     (): AppContextType => ({
       userProgress,
@@ -243,8 +305,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       getProblemProgress,
       isGroupCollapsed,
       toggleGroupCollapsed,
+      exportData,
+      importData,
+      restoreBackup: restoreBackupFn,
+      hasBackup: hasBackupFn,
     }),
-    [userProgress, settings, problemsByDifficulty, stats]
+    [userProgress, settings, problemsByDifficulty, stats, exportData, importData, restoreBackupFn, hasBackupFn]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -1,6 +1,195 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { ContributionGraph } from './ContributionGraph';
+
+// Data Sync Button with Popover
+function DataSyncButton() {
+  const { exportData, importData, restoreBackup, hasBackup } = useApp();
+  const [isOpen, setIsOpen] = useState(false);
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        popoverRef.current &&
+        buttonRef.current &&
+        !popoverRef.current.contains(event.target as Node) &&
+        !buttonRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Clear status after a delay
+  useEffect(() => {
+    if (status) {
+      const timer = setTimeout(() => setStatus(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
+
+  const handleExport = () => {
+    exportData();
+    setStatus({ type: 'success', message: 'Data exported!' });
+    setIsOpen(false);
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const result = await importData(file);
+    
+    if (result.success) {
+      if (result.warnings && result.warnings.length > 0) {
+        setStatus({ type: 'warning', message: `Imported with warnings: ${result.warnings[0]}` });
+      } else {
+        setStatus({ type: 'success', message: 'Data imported successfully!' });
+      }
+    } else {
+      setStatus({ type: 'error', message: result.error || 'Import failed' });
+    }
+
+    // Reset file input
+    e.target.value = '';
+    setIsOpen(false);
+  };
+
+  const handleRestore = () => {
+    const success = restoreBackup();
+    if (success) {
+      setStatus({ type: 'success', message: 'Backup restored!' });
+    } else {
+      setStatus({ type: 'error', message: 'No backup found' });
+    }
+    setIsOpen(false);
+  };
+
+  const backupExists = hasBackup();
+
+  return (
+    <div className="relative">
+      {/* Sync Button */}
+      <button
+        ref={buttonRef}
+        onClick={() => setIsOpen(!isOpen)}
+        title="Import / Export Data"
+        className="relative w-10 h-10 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-color)] hover:border-[var(--text-muted)] flex items-center justify-center transition-all duration-300 hover:shadow-md"
+        aria-label="Import or export data"
+        aria-expanded={isOpen}
+      >
+        {/* Sync/Cloud icon */}
+        <svg 
+          className="w-5 h-5 text-[var(--text-secondary)]" 
+          fill="none" 
+          viewBox="0 0 24 24" 
+          stroke="currentColor"
+        >
+          <path 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            strokeWidth={2} 
+            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" 
+          />
+        </svg>
+      </button>
+
+      {/* Status Toast */}
+      {status && (
+        <div className="absolute top-full right-0 mt-2 px-3 py-2.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-color)] shadow-lg text-sm font-medium text-[var(--text-primary)] z-50 animate-fade-in flex items-center gap-2 whitespace-nowrap">
+          {/* Status Icon */}
+          {status.type === 'success' && (
+            <svg className="w-4 h-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+          {status.type === 'warning' && (
+            <svg className="w-4 h-4 text-amber-500 dark:text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          )}
+          {status.type === 'error' && (
+            <svg className="w-4 h-4 text-rose-500 dark:text-rose-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          )}
+          <span>{status.message}</span>
+        </div>
+      )}
+
+      {/* Popover */}
+      {isOpen && !status && (
+        <div 
+          ref={popoverRef}
+          className="absolute top-full right-0 mt-2 w-48 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl shadow-lg z-50 animate-fade-in overflow-hidden"
+        >
+          <div className="p-2 space-y-1">
+            {/* Export Button */}
+            <button
+              onClick={handleExport}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Export Data
+            </button>
+
+            {/* Import Button */}
+            <button
+              onClick={handleImportClick}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Import Data
+            </button>
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+
+            {/* Restore Backup - only shown if backup exists */}
+            {backupExists && (
+              <>
+                <div className="border-t border-[var(--border-color)] my-1" />
+                <button
+                  onClick={handleRestore}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                  </svg>
+                  Restore Backup
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Header() {
   const { settings, toggleTheme, stats, userProgress } = useApp();
@@ -111,7 +300,7 @@ export function Header() {
           </div>
 
           {/* Right side */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             {/* NeetCode-style Segmented Progress Bar with hover popup */}
             <div 
               className="relative hidden sm:block"
@@ -171,6 +360,9 @@ export function Header() {
                 </div>
               )}
             </div>
+
+            {/* Data Sync Button */}
+            <DataSyncButton />
 
             {/* Theme toggle */}
             <button
