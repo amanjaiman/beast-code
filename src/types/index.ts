@@ -43,3 +43,35 @@ export const DEFAULT_PROGRESS: ProblemProgress = {
   completed: false,
   flagged: false,
 };
+
+// Code execution types
+export interface TestCase {
+  inputArgs: unknown[];
+  expectedOutput: unknown;
+  inputDisplay: string;
+}
+
+export interface ProblemDetail {
+  problemId: number;
+  description: string;
+  sampleTestCases: TestCase[];
+  hiddenTestCases: TestCase[];
+  starterCode: { python: string; javascript: string };
+  functionName: string;
+}
+
+export type Language = 'python' | 'javascript';
+
+export interface TestResult {
+  passed: boolean;
+  input: string;
+  got?: unknown;
+  error?: string;
+}
+
+export interface RunResult {
+  testResults: TestResult[];
+  passed: number;
+  total: number;
+  runtimeError?: string;
+}

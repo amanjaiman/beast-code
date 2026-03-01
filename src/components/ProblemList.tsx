@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { ProblemRow } from './ProblemRow';
+import { ProblemSolver } from './ProblemSolver';
+import { problemDetailMap } from '../data/problemDetails';
 import type { Difficulty, Problem } from '../types';
 
 // Tab configuration for each difficulty
@@ -131,6 +133,15 @@ export function ProblemList() {
   // State for accordion notes - only one problem's notes can be expanded at a time
   const [expandedNoteId, setExpandedNoteId] = useState<number | null>(null);
 
+  // State for the solve overlay
+  const [activeSolver, setActiveSolver] = useState<{ problemId: number; rowElement: HTMLElement } | null>(null);
+  const activeModalDetail = activeSolver ? problemDetailMap.get(activeSolver.problemId) : undefined;
+  const activeModalProblem = useMemo(() => {
+    if (!activeSolver) return undefined;
+    const all = [...problemsByDifficulty.Easy, ...problemsByDifficulty.Medium, ...problemsByDifficulty.Hard];
+    return all.find((p) => p.id === activeSolver.problemId);
+  }, [activeSolver, problemsByDifficulty]);
+
   // Helper to sort problems by completion date
   const sortByCompletionDate = (problems: Problem[]): Problem[] => {
     if (!sortByCompletion) return problems;
@@ -224,6 +235,15 @@ export function ProblemList() {
   };
 
   return (
+    <>
+    {activeModalDetail && activeModalProblem && activeSolver && (
+      <ProblemSolver
+        detail={activeModalDetail}
+        problem={activeModalProblem}
+        rowElement={activeSolver.rowElement}
+        onClose={() => setActiveSolver(null)}
+      />
+    )}
     <div className="card-elevated overflow-hidden animate-fade-in-up">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 border-b border-[var(--border-subtle)]">
@@ -365,12 +385,14 @@ export function ProblemList() {
       <div className="divide-y divide-[var(--border-subtle)]">
         {activeProblems.length > 0 ? (
           activeProblems.map((problem, idx) => (
-            <ProblemRow 
-              key={problem.id} 
-              problem={problem} 
+            <ProblemRow
+              key={problem.id}
+              problem={problem}
               index={idx}
               expandedNoteId={expandedNoteId}
               setExpandedNoteId={setExpandedNoteId}
+              hasDetail={problemDetailMap.has(problem.id)}
+              onOpenModal={(id, el) => setActiveSolver({ problemId: id, rowElement: el })}
             />
           ))
         ) : (
@@ -403,5 +425,6 @@ export function ProblemList() {
         )}
       </div>
     </div>
+    </>
   );
 }

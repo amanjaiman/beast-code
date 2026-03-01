@@ -35,10 +35,13 @@ interface ProblemRowProps {
   index?: number;
   expandedNoteId: number | null;
   setExpandedNoteId: (id: number | null) => void;
+  hasDetail?: boolean;
+  onOpenModal?: (problemId: number, rowElement: HTMLElement) => void;
 }
 
-export function ProblemRow({ problem, index = 0, expandedNoteId, setExpandedNoteId }: ProblemRowProps) {
+export function ProblemRow({ problem, index = 0, expandedNoteId, setExpandedNoteId, hasDetail = false, onOpenModal }: ProblemRowProps) {
   const { getProblemProgress, toggleCompleted, toggleFlagged, updateNotes, settings } = useApp();
+  const rowRef = useRef<HTMLDivElement>(null);
   const progress = getProblemProgress(problem.id);
   const isCompleted = progress.completed;
   const isFlagged = progress.flagged;
@@ -100,7 +103,7 @@ export function ProblemRow({ problem, index = 0, expandedNoteId, setExpandedNote
   };
 
   return (
-    <div className="interactive-row" style={{ animationDelay: `${index * 30}ms` }}>
+    <div ref={rowRef} className="interactive-row" style={{ animationDelay: `${index * 30}ms` }}>
       {/* Main row */}
       <div 
         className={`
@@ -186,6 +189,20 @@ export function ProblemRow({ problem, index = 0, expandedNoteId, setExpandedNote
           <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
             {completionDateText}
           </span>
+        )}
+
+        {/* Solve button - only shown when problem has detail */}
+        {hasDetail && (
+          <button
+            onClick={() => rowRef.current && onOpenModal?.(problem.id, rowRef.current)}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all duration-200 text-cyan-600 dark:text-cyan-400 border-cyan-300 dark:border-cyan-700 bg-cyan-50 dark:bg-cyan-500/10 hover:bg-cyan-100 dark:hover:bg-cyan-500/20"
+            aria-label="Solve this problem"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+            </svg>
+            Solve
+          </button>
         )}
 
         {/* Flag/bookmark button */}
