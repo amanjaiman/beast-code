@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import { javascript } from '@codemirror/lang-javascript';
@@ -30,11 +31,16 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
   const [phase, setPhase] = useState<Phase>('pre-expand');
   const [closeRect, setCloseRect] = useState<DOMRect | null>(null);
 
+  const [savedCodes, setSavedCodes] = useLocalStorage<Record<number, { python?: string; javascript?: string }>>(
+    'beast-code', {}
+  );
+
   const [language, setLanguage] = useState<Language>('python');
-  const [code, setCode] = useState(detail.starterCode.python);
-  const [isDirty, setIsDirty] = useState(false);
+  const [code, setCode] = useState(() => savedCodes[problem.id]?.python ?? detail.starterCode.python);
   const [isRunning, setIsRunning] = useState(false);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
+  const [resultsHeight, setResultsHeight] = useState(192);
+  const resizeDrag = useRef<{ startY: number; startHeight: number } | null>(null);
 
   // Capture origin rect once on mount
   const originRect = useRef<DOMRect>(rowElement.getBoundingClientRect());
@@ -80,6 +86,31 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
     return () => window.removeEventListener('keydown', handler);
   });
 
+  // Results panel resize
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizeDrag.current) return;
+      const delta = resizeDrag.current.startY - e.clientY;
+      setResultsHeight(Math.max(80, Math.min(600, resizeDrag.current.startHeight + delta)));
+    };
+    const onUp = () => {
+      if (!resizeDrag.current) return;
+      resizeDrag.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, []);
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeDrag.current = { startY: e.clientY, startHeight: resultsHeight };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'ns-resize';
+  }, [resultsHeight]);
+
   const triggerClose = useCallback(() => {
     if (phase === 'closing-shrink' || phase === 'closing-slide') return;
     setCloseRect(rowElement.getBoundingClientRect());
@@ -90,12 +121,15 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
     if (lang === language) return;
     setLanguage(lang);
     setRunResult(null);
-    if (!isDirty) setCode(detail.starterCode[lang]);
+    setCode(savedCodes[problem.id]?.[lang] ?? detail.starterCode[lang]);
   };
 
   const handleCodeChange = (value: string) => {
     setCode(value);
-    if (!isDirty) setIsDirty(true);
+    setSavedCodes(prev => ({
+      ...prev,
+      [problem.id]: { ...prev[problem.id], [language]: value },
+    }));
   };
 
   const handleRun = async () => {
@@ -315,7 +349,15 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
 
           {/* Results panel */}
           {(runResult || isRunning) && (
-            <div className="h-48 shrink-0 border-t border-[var(--border-subtle)] overflow-y-auto scrollbar-thin p-4">
+            <div className="shrink-0 flex flex-col border-t border-[var(--border-subtle)]" style={{ height: resultsHeight }}>
+              {/* Drag handle */}
+              <div
+                onMouseDown={handleResizeMouseDown}
+                className="h-1.5 shrink-0 flex items-center justify-center cursor-ns-resize group hover:bg-[var(--border-subtle)] transition-colors"
+              >
+                <div className="w-8 h-px bg-[var(--border-color)] group-hover:bg-[var(--text-muted)] transition-colors rounded-full" />
+              </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
               {isRunning && !runResult ? (
                 <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -364,6 +406,7 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
                   )}
                 </>
               ) : null}
+            </div>
             </div>
           )}
         </div>

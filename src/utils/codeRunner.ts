@@ -1,22 +1,88 @@
 import type { Language, TestCase, RunResult } from '../types';
 
-const PISTON_URL = 'https://emkc.org/api/v2/piston/execute';
+// ── JavaScript: execute directly in the browser ───────────────────────────
 
-const LANGUAGE_CONFIG: Record<Language, { language: string; version: string }> = {
-  python: { language: 'python', version: '3.10.0' },
-  javascript: { language: 'javascript', version: '18.15.0' },
-};
+function buildJavaScriptHarness(userCode: string, functionName: string, testCases: TestCase[]): string {
+  const serialized = JSON.stringify(
+    testCases.map((tc) => ({ args: tc.inputArgs, expected: tc.expectedOutput, display: tc.inputDisplay }))
+  );
+  return `${userCode}
+const _testCases = ${serialized};
+const _results = [];
+for (const _tc of _testCases) {
+  try {
+    const _result = ${functionName}(..._tc.args);
+    _results.push({ passed: JSON.stringify(_result) === JSON.stringify(_tc.expected), input: _tc.display, got: _result });
+  } catch (_e) {
+    _results.push({ passed: false, input: _tc.display, error: _e.message });
+  }
+}
+return _results;`;
+}
+
+function runJavaScript(userCode: string, functionName: string, testCases: TestCase[]): RunResult {
+  const harness = buildJavaScriptHarness(userCode, functionName, testCases);
+  let parsed: Array<{ passed: boolean; input: string; got?: unknown; error?: string }>;
+  try {
+    // eslint-disable-next-line no-new-func
+    parsed = new Function(harness)() as typeof parsed;
+  } catch (e) {
+    return {
+      testResults: [],
+      passed: 0,
+      total: testCases.length,
+      runtimeError: e instanceof Error ? e.message : String(e),
+    };
+  }
+  const testResults = parsed.map((r) => ({ passed: r.passed, input: r.input, got: r.got, error: r.error }));
+  return { testResults, passed: testResults.filter((r) => r.passed).length, total: testCases.length };
+}
+
+// ── Python: execute via Pyodide (WebAssembly, loaded from CDN) ────────────
+
+interface PyodideInterface {
+  runPythonAsync: (code: string) => Promise<unknown>;
+}
+
+declare global {
+  interface Window {
+    loadPyodide: (config?: { indexURL?: string }) => Promise<PyodideInterface>;
+  }
+}
+
+const PYODIDE_VERSION = '0.26.4';
+const PYODIDE_CDN = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
+
+let _pyodideInstance: PyodideInterface | null = null;
+let _pyodideLoading: Promise<PyodideInterface> | null = null;
+
+function getPyodide(): Promise<PyodideInterface> {
+  if (_pyodideInstance) return Promise.resolve(_pyodideInstance);
+  if (_pyodideLoading) return _pyodideLoading;
+
+  _pyodideLoading = (async () => {
+    if (!window.loadPyodide) {
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = `${PYODIDE_CDN}pyodide.js`;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load Pyodide script'));
+        document.head.appendChild(script);
+      });
+    }
+    _pyodideInstance = await window.loadPyodide({ indexURL: PYODIDE_CDN });
+    return _pyodideInstance;
+  })();
+
+  return _pyodideLoading;
+}
 
 function buildPythonHarness(userCode: string, functionName: string, testCases: TestCase[]): string {
   const serialized = JSON.stringify(
-    testCases.map((tc) => ({
-      args: tc.inputArgs,
-      expected: tc.expectedOutput,
-      display: tc.inputDisplay,
-    }))
+    testCases.map((tc) => ({ args: tc.inputArgs, expected: tc.expectedOutput, display: tc.inputDisplay }))
   );
   return `${userCode}
-import json
+import json as _json
 _test_cases = ${serialized}
 _results = []
 for _tc in _test_cases:
@@ -25,32 +91,52 @@ for _tc in _test_cases:
         _results.append({'passed': _result == _tc['expected'], 'input': _tc['display'], 'got': _result})
     except Exception as _e:
         _results.append({'passed': False, 'input': _tc['display'], 'error': str(_e)})
-print(json.dumps(_results))
+_json.dumps(_results)
 `;
 }
 
-function buildJavaScriptHarness(userCode: string, functionName: string, testCases: TestCase[]): string {
-  const serialized = JSON.stringify(
-    testCases.map((tc) => ({
-      args: tc.inputArgs,
-      expected: tc.expectedOutput,
-      display: tc.inputDisplay,
-    }))
-  );
-  return `${userCode}
-const _testCases = ${serialized};
-const _results = [];
-for (const _tc of _testCases) {
-    try {
-        const _result = ${functionName}(..._tc.args);
-        _results.push({ passed: JSON.stringify(_result) === JSON.stringify(_tc.expected), input: _tc.display, got: _result });
-    } catch(_e) {
-        _results.push({ passed: false, input: _tc.display, error: _e.message });
-    }
+async function runPython(userCode: string, functionName: string, testCases: TestCase[]): Promise<RunResult> {
+  let pyodide: PyodideInterface;
+  try {
+    pyodide = await getPyodide();
+  } catch {
+    return {
+      testResults: [],
+      passed: 0,
+      total: testCases.length,
+      runtimeError: 'Failed to load Python runtime. Check your internet connection.',
+    };
+  }
+
+  let rawOutput: unknown;
+  try {
+    rawOutput = await pyodide.runPythonAsync(buildPythonHarness(userCode, functionName, testCases));
+  } catch (e) {
+    return {
+      testResults: [],
+      passed: 0,
+      total: testCases.length,
+      runtimeError: e instanceof Error ? e.message : String(e),
+    };
+  }
+
+  let parsed: Array<{ passed: boolean; input: string; got?: unknown; error?: string }>;
+  try {
+    parsed = JSON.parse(rawOutput as string);
+  } catch {
+    return {
+      testResults: [],
+      passed: 0,
+      total: testCases.length,
+      runtimeError: `Unexpected output: ${rawOutput}`,
+    };
+  }
+
+  const testResults = parsed.map((r) => ({ passed: r.passed, input: r.input, got: r.got, error: r.error }));
+  return { testResults, passed: testResults.filter((r) => r.passed).length, total: testCases.length };
 }
-console.log(JSON.stringify(_results));
-`;
-}
+
+// ── Public API ────────────────────────────────────────────────────────────
 
 export async function runCode(
   userCode: string,
@@ -58,82 +144,6 @@ export async function runCode(
   functionName: string,
   testCases: TestCase[]
 ): Promise<RunResult> {
-  const harness =
-    language === 'python'
-      ? buildPythonHarness(userCode, functionName, testCases)
-      : buildJavaScriptHarness(userCode, functionName, testCases);
-
-  const config = LANGUAGE_CONFIG[language];
-
-  let response: Response;
-  try {
-    response = await fetch(PISTON_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        language: config.language,
-        version: config.version,
-        files: [{ content: harness }],
-      }),
-    });
-  } catch {
-    return {
-      testResults: [],
-      passed: 0,
-      total: testCases.length,
-      runtimeError: 'Network error: could not reach Piston API',
-    };
-  }
-
-  if (!response.ok) {
-    return {
-      testResults: [],
-      passed: 0,
-      total: testCases.length,
-      runtimeError: `API request failed (HTTP ${response.status})`,
-    };
-  }
-
-  const data = await response.json() as {
-    run: { stdout: string; stderr: string };
-  };
-
-  const stdout = data.run.stdout.trim();
-  const stderr = data.run.stderr.trim();
-
-  if (!stdout && stderr) {
-    return {
-      testResults: [],
-      passed: 0,
-      total: testCases.length,
-      runtimeError: stderr,
-    };
-  }
-
-  let parsed: Array<{ passed: boolean; input: string; got?: unknown; error?: string }>;
-  try {
-    parsed = JSON.parse(stdout);
-  } catch {
-    return {
-      testResults: [],
-      passed: 0,
-      total: testCases.length,
-      runtimeError: `Could not parse output: ${stdout}`,
-    };
-  }
-
-  const testResults = parsed.map((r) => ({
-    passed: r.passed,
-    input: r.input,
-    got: r.got,
-    error: r.error,
-  }));
-
-  const passedCount = testResults.filter((r) => r.passed).length;
-
-  return {
-    testResults,
-    passed: passedCount,
-    total: testCases.length,
-  };
+  if (language === 'javascript') return runJavaScript(userCode, functionName, testCases);
+  return runPython(userCode, functionName, testCases);
 }
