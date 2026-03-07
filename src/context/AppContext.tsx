@@ -1,9 +1,11 @@
 import {
   createContext,
   useContext,
+  useState,
   useEffect,
   useMemo,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
@@ -22,13 +24,17 @@ import {
   type AppSettings,
   type UserProgressMap,
   type ProblemProgress,
+  type SavedCodesMap,
   DEFAULT_PROGRESS,
 } from '../types';
+import { useAuth } from './AuthContext';
+import { supabase } from '../lib/supabase';
 
 // Storage keys
 const STORAGE_KEYS = {
   PROGRESS: 'beast-progress',
   SETTINGS: 'beast-settings',
+  SAVED_CODES: 'beast-code',
 } as const;
 
 // Default settings
@@ -55,13 +61,16 @@ interface AppContextType {
   // State
   userProgress: UserProgressMap;
   settings: AppSettings;
+  savedCodes: SavedCodesMap;
   problemsByDifficulty: ProblemsByDifficulty;
   stats: ProblemsStats;
+  syncStatus: 'idle' | 'syncing' | 'error';
 
   // Actions
   toggleCompleted: (problemId: number) => void;
   toggleFlagged: (problemId: number) => void;
   updateNotes: (problemId: number, notes: string) => void;
+  updateSavedCode: (problemId: number, language: 'python' | 'javascript', code: string) => void;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
   setHideCompleted: (hide: boolean) => void;
@@ -85,6 +94,8 @@ const AppContext = createContext<AppContextType | null>(null);
 
 // Provider component
 export function AppProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+
   // Load/persist user progress
   const [userProgress, setUserProgress] = useLocalStorage<UserProgressMap>(
     STORAGE_KEYS.PROGRESS,
@@ -96,6 +107,104 @@ export function AppProvider({ children }: { children: ReactNode }) {
     STORAGE_KEYS.SETTINGS,
     createDefaultSettings()
   );
+
+  // Load/persist saved codes (lifted from ProblemSolver)
+  const [savedCodes, setSavedCodes] = useLocalStorage<SavedCodesMap>(
+    STORAGE_KEYS.SAVED_CODES,
+    {}
+  );
+
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
+
+  // Track whether initial load from Supabase has happened for this user session
+  const initialLoadDone = useRef(false);
+  const prevUserId = useRef<string | null>(null);
+
+  // Refs to always have latest values in debounced sync without re-triggering the effect
+  const progressRef = useRef(userProgress);
+  progressRef.current = userProgress;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const savedCodesRef = useRef(savedCodes);
+  savedCodesRef.current = savedCodes;
+
+  // ── Supabase: load data on login ──
+  useEffect(() => {
+    if (!user) {
+      initialLoadDone.current = false;
+      prevUserId.current = null;
+      return;
+    }
+
+    if (prevUserId.current === user.id && initialLoadDone.current) return;
+    prevUserId.current = user.id;
+
+    const loadFromSupabase = async () => {
+      const { data, error } = await supabase
+        .from('user_data')
+        .select('progress, settings, saved_codes')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Failed to load from Supabase:', error.message);
+        initialLoadDone.current = true;
+        return;
+      }
+
+      if (data) {
+        // Returning user — Supabase is source of truth
+        const remoteProgress = (data.progress ?? {}) as UserProgressMap;
+        const remoteSettings = { ...createDefaultSettings(), ...((data.settings ?? {}) as Partial<AppSettings>) };
+        const remoteCodes = (data.saved_codes ?? {}) as SavedCodesMap;
+        setUserProgress(remoteProgress);
+        setSettings(remoteSettings);
+        setSavedCodes(remoteCodes);
+      } else {
+        // New user (no row yet) — push current local data to Supabase
+        const localProgress = progressRef.current;
+        const localSettings = settingsRef.current;
+        const localCodes = savedCodesRef.current;
+
+        await supabase.from('user_data').upsert({
+          id: user.id,
+          progress: localProgress,
+          settings: localSettings,
+          saved_codes: localCodes,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      initialLoadDone.current = true;
+    };
+
+    loadFromSupabase();
+  }, [user, setUserProgress, setSettings, setSavedCodes]);
+
+  // ── Supabase: debounced save on data changes ──
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!user || !initialLoadDone.current) return;
+
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+
+    syncTimer.current = setTimeout(async () => {
+      setSyncStatus('syncing');
+      const { error } = await supabase.from('user_data').upsert({
+        id: user.id,
+        progress: progressRef.current,
+        settings: settingsRef.current,
+        saved_codes: savedCodesRef.current,
+        updated_at: new Date().toISOString(),
+      });
+      setSyncStatus(error ? 'error' : 'idle');
+    }, 1000);
+
+    return () => {
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+    };
+  }, [user, userProgress, settings, savedCodes]);
 
   // Get problems data
   const { problemsByDifficulty, stats, getEligibleProblems } = useProblems(
@@ -170,10 +279,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...prev,
         [problemId]: {
           ...current,
-          notes: notes || undefined, // Remove empty strings to save storage
+          notes: notes || undefined,
         },
       };
     });
+  };
+
+  const updateSavedCode = (problemId: number, language: 'python' | 'javascript', code: string) => {
+    setSavedCodes((prev) => ({
+      ...prev,
+      [problemId]: { ...prev[problemId], [language]: code },
+    }));
   };
 
   const setTheme = (theme: 'light' | 'dark') => {
@@ -212,7 +328,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const picked = weightedRandomPick(eligible, settings.categoryLastPicked);
 
     if (picked) {
-      // Update category timestamp and switch to the problem's difficulty tab
       setSettings((prev) => ({
         ...prev,
         activeTab: picked.difficulty,
@@ -259,10 +374,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    // Backup current data before importing
     saveBackup(userProgress, settings);
 
-    // Apply imported data
     setUserProgress(result.data.progress);
     setSettings(result.data.settings);
 
@@ -289,11 +402,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (): AppContextType => ({
       userProgress,
       settings,
+      savedCodes,
       problemsByDifficulty,
       stats,
+      syncStatus,
       toggleCompleted,
       toggleFlagged,
       updateNotes,
+      updateSavedCode,
       setTheme,
       toggleTheme,
       setHideCompleted,
@@ -310,7 +426,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       restoreBackup: restoreBackupFn,
       hasBackup: hasBackupFn,
     }),
-    [userProgress, settings, problemsByDifficulty, stats, exportData, importData, restoreBackupFn, hasBackupFn]
+    [userProgress, settings, savedCodes, problemsByDifficulty, stats, syncStatus, exportData, importData, restoreBackupFn, hasBackupFn]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

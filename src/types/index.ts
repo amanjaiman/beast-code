@@ -15,6 +15,9 @@ export interface ProblemProgress {
 // All user progress keyed by problem ID
 export type UserProgressMap = Record<number, ProblemProgress>;
 
+// Saved code per problem
+export type SavedCodesMap = Record<number, { python?: string; javascript?: string }>;
+
 // App settings
 export interface AppSettings {
   theme: 'light' | 'dark';

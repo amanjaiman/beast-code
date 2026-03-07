@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { ContributionGraph } from './ContributionGraph';
+import { AuthModal } from './AuthModal';
 
 // Data Sync Button with Popover
 function DataSyncButton() {
@@ -191,9 +193,80 @@ function DataSyncButton() {
   );
 }
 
+function UserMenuButton() {
+  const { user, signOut } = useAuth();
+  const { syncStatus } = useApp();
+  const [isOpen, setIsOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        popoverRef.current &&
+        buttonRef.current &&
+        !popoverRef.current.contains(event.target as Node) &&
+        !buttonRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  if (!user) return null;
+
+  const initial = (user.email?.[0] ?? '?').toUpperCase();
+
+  return (
+    <div className="relative">
+      <button
+        ref={buttonRef}
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-cyan-500 flex items-center justify-center text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300"
+        title={user.email ?? 'Account'}
+      >
+        {initial}
+        {syncStatus === 'error' && (
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-[var(--bg-elevated)]" />
+        )}
+      </button>
+
+      {isOpen && (
+        <div
+          ref={popoverRef}
+          className="absolute top-full right-0 mt-2 w-56 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl shadow-lg z-50 animate-fade-in overflow-hidden"
+        >
+          <div className="px-4 py-3 border-b border-[var(--border-color)]">
+            <p className="text-sm font-medium text-[var(--text-primary)] truncate">{user.email}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              {syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'error' ? 'Sync error' : 'Synced'}
+            </p>
+          </div>
+          <div className="p-2">
+            <button
+              onClick={() => { signOut(); setIsOpen(false); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Header() {
   const { settings, toggleTheme, stats, userProgress } = useApp();
+  const { user, loading: authLoading } = useAuth();
   const [showGraph, setShowGraph] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const handleMouseEnter = () => {
@@ -232,6 +305,7 @@ export function Header() {
   const hardFillPercent = hardTotal > 0 ? (hardCompleted / hardTotal) * 100 : 0;
 
   return (
+    <>
     <header className="sticky top-0 z-50 glass border-b border-[var(--border-subtle)]">
       <div className="max-w-5xl mx-auto px-6">
         <div className="flex items-center justify-between h-16">
@@ -364,6 +438,23 @@ export function Header() {
             {/* Data Sync Button */}
             <DataSyncButton />
 
+            {/* Auth: Sign In button or User menu */}
+            {!authLoading && (
+              user ? (
+                <UserMenuButton />
+              ) : (
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="h-10 px-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-color)] hover:border-[var(--text-muted)] flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all duration-300 hover:shadow-md"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="hidden sm:inline">Sign In</span>
+                </button>
+              )
+            )}
+
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
@@ -402,5 +493,7 @@ export function Header() {
         </div>
       </div>
     </header>
+    <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+    </>
   );
 }

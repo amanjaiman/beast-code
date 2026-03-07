@@ -1,4 +1,5 @@
 import { AppProvider } from './context/AppContext';
+import { AuthProvider } from './context/AuthContext';
 import { Header } from './components/Header';
 import { ProblemList } from './components/ProblemList';
 
@@ -7,7 +8,6 @@ function AppContent() {
     <div className="min-h-screen bg-[var(--bg-primary)] bg-mesh transition-colors duration-300">
       <Header />
       
-      {/* Main content */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         <ProblemList />
       </main>
@@ -17,9 +17,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
+    </AuthProvider>
   );
 }
 

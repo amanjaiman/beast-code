@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useLocalStorage } from '../hooks/useLocalStorage';
 import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import { javascript } from '@codemirror/lang-javascript';
@@ -45,13 +44,9 @@ function renderDescription(text: string) {
 }
 
 export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemSolverProps) {
-  const { settings, getProblemProgress, toggleCompleted } = useApp();
+  const { settings, getProblemProgress, toggleCompleted, savedCodes, updateSavedCode } = useApp();
   const [phase, setPhase] = useState<Phase>('pre-expand');
   const [closeRect, setCloseRect] = useState<DOMRect | null>(null);
-
-  const [savedCodes, setSavedCodes] = useLocalStorage<Record<number, { python?: string; javascript?: string }>>(
-    'beast-code', {}
-  );
 
   const [language, setLanguage] = useState<Language>('python');
   const [code, setCode] = useState(() => savedCodes[problem.id]?.python ?? detail.starterCode.python);
@@ -141,10 +136,7 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
 
   const handleCodeChange = (value: string) => {
     setCode(value);
-    setSavedCodes(prev => ({
-      ...prev,
-      [problem.id]: { ...prev[problem.id], [language]: value },
-    }));
+    updateSavedCode(problem.id, language, value);
   };
 
   const isClassMode = detail.mode === 'class';
