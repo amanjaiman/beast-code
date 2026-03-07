@@ -51,13 +51,42 @@ export interface TestCase {
   inputDisplay: string;
 }
 
+export interface SolutionTier {
+  complexity: string;
+  name: string;
+  hint?: string;
+  isBest: boolean;
+}
+
+export interface BenchmarkConfig {
+  sizes: number[];
+  generateInput: (size: number) => unknown[];
+}
+
+export interface ClassTestCase {
+  operations: string[];
+  operationArgs: unknown[][];
+  expected: (unknown | null)[];
+  inputDisplay: string;
+}
+
 export interface ProblemDetail {
   problemId: number;
   description: string;
-  sampleTestCases: TestCase[];
-  hiddenTestCases: TestCase[];
   starterCode: { python: string; javascript: string };
   functionName: string;
+  sampleTestCases: TestCase[];
+  hiddenTestCases: TestCase[];
+  solutions?: SolutionTier[];
+  benchmarkConfig?: BenchmarkConfig;
+  mode?: 'function' | 'class';
+  className?: string;
+  classSampleTestCases?: ClassTestCase[];
+  classHiddenTestCases?: ClassTestCase[];
+  inputTypes?: ('value' | 'tree' | 'list' | 'cyclicList')[];
+  outputType?: 'value' | 'tree' | 'list' | 'inPlace';
+  inPlaceArgIndex?: number;
+  compareType?: 'exact' | 'unorderedArray' | 'unorderedNestedArray' | 'float';
 }
 
 export type Language = 'python' | 'javascript';
@@ -74,4 +103,12 @@ export interface RunResult {
   passed: number;
   total: number;
   runtimeError?: string;
+}
+
+export interface BenchmarkResult {
+  detectedComplexity: string;
+  matchedTier: SolutionTier | null;
+  bestTier: SolutionTier;
+  canDoBetter: boolean;
+  timings: { size: number; ms: number }[];
 }

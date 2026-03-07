@@ -149,33 +149,47 @@ export function ProblemRow({ problem, index = 0, expandedNoteId, setExpandedNote
           )}
         </button>
 
-        {/* Problem name link */}
-        <a
-          href={problem.link}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`
-            flex-1 text-sm font-medium transition-all duration-200 group/link
-            ${isCompleted 
-              ? 'text-[var(--text-muted)] line-through decoration-[var(--border-color)]' 
-              : 'text-[var(--text-primary)] hover:text-cyan-600 dark:hover:text-cyan-400'
-            }
-          `}
-        >
-          <span className="relative">
+        {/* Problem name — opens editor if detail exists, otherwise external link */}
+        {hasDetail ? (
+          <button
+            onClick={() => rowRef.current && onOpenModal?.(problem.id, rowRef.current)}
+            className={`
+              flex-1 text-left text-sm font-medium transition-all duration-200 cursor-pointer group/link
+              ${isCompleted 
+                ? 'text-[var(--text-muted)] line-through decoration-[var(--border-color)]' 
+                : 'text-[var(--text-primary)] hover:text-cyan-600 dark:hover:text-cyan-400'
+              }
+            `}
+          >
             {problem.name}
-            {/* External link indicator on hover */}
-            <svg 
-              className="inline-block w-3 h-3 ml-1 opacity-0 group-hover/link:opacity-50 transition-opacity -translate-y-0.5" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor" 
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-          </span>
-        </a>
+          </button>
+        ) : (
+          <a
+            href={problem.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`
+              flex-1 text-sm font-medium transition-all duration-200 group/link
+              ${isCompleted 
+                ? 'text-[var(--text-muted)] line-through decoration-[var(--border-color)]' 
+                : 'text-[var(--text-primary)] hover:text-cyan-600 dark:hover:text-cyan-400'
+              }
+            `}
+          >
+            <span className="relative">
+              {problem.name}
+              <svg 
+                className="inline-block w-3 h-3 ml-1 opacity-0 group-hover/link:opacity-50 transition-opacity -translate-y-0.5" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor" 
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </span>
+          </a>
+        )}
 
         {/* Category badge - only visible when completed AND showCategories is enabled */}
         {showCategory && (
@@ -191,18 +205,19 @@ export function ProblemRow({ problem, index = 0, expandedNoteId, setExpandedNote
           </span>
         )}
 
-        {/* Solve button - only shown when problem has detail */}
+        {/* External link button - only shown when problem has detail (since clicking name opens editor instead) */}
         {hasDetail && (
-          <button
-            onClick={() => rowRef.current && onOpenModal?.(problem.id, rowRef.current)}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all duration-200 text-cyan-600 dark:text-cyan-400 border-cyan-300 dark:border-cyan-700 bg-cyan-50 dark:bg-cyan-500/10 hover:bg-cyan-100 dark:hover:bg-cyan-500/20"
-            aria-label="Solve this problem"
+          <a
+            href={problem.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-cyan-500 hover:bg-cyan-500/10 transition-all duration-200"
+            aria-label="Open problem on NeetCode"
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
-            Solve
-          </button>
+          </a>
         )}
 
         {/* Flag/bookmark button */}

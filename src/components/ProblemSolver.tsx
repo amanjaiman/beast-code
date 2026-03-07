@@ -4,9 +4,10 @@ import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
-import type { ProblemDetail, Language, RunResult } from '../types';
+import type { ProblemDetail, Language, RunResult, BenchmarkResult } from '../types';
 import type { Problem } from '../types';
-import { runCode } from '../utils/codeRunner';
+import { runCode, runClassCode, type RunOptions } from '../utils/codeRunner';
+import { analyzeSolution } from '../utils/complexityAnalyzer';
 import { useApp } from '../context/AppContext';
 
 interface ProblemSolverProps {
@@ -26,8 +27,25 @@ const DIFFICULTY_GRADIENT: Record<string, string> = {
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)';
 
+function renderDescription(text: string) {
+  const parts = text.split(/(`[^`]+`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return (
+        <code
+          key={i}
+          className="px-1 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[0.85em] text-cyan-600 dark:text-cyan-400"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return part;
+  });
+}
+
 export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemSolverProps) {
-  const { settings, getProblemProgress } = useApp();
+  const { settings, getProblemProgress, toggleCompleted } = useApp();
   const [phase, setPhase] = useState<Phase>('pre-expand');
   const [closeRect, setCloseRect] = useState<DOMRect | null>(null);
 
@@ -39,6 +57,8 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
   const [code, setCode] = useState(() => savedCodes[problem.id]?.python ?? detail.starterCode.python);
   const [isRunning, setIsRunning] = useState(false);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
+  const [isBenchmarking, setIsBenchmarking] = useState(false);
+  const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const [resultsHeight, setResultsHeight] = useState(192);
   const resizeDrag = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -79,12 +99,6 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
     }
   }, [phase, onClose]);
 
-  // Escape key
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') triggerClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  });
 
   // Results panel resize
   useEffect(() => {
@@ -121,6 +135,7 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
     if (lang === language) return;
     setLanguage(lang);
     setRunResult(null);
+    setBenchmarkResult(null);
     setCode(savedCodes[problem.id]?.[lang] ?? detail.starterCode[lang]);
   };
 
@@ -132,13 +147,55 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
     }));
   };
 
+  const isClassMode = detail.mode === 'class';
+
+  const runOptions: RunOptions | undefined = (
+    detail.inputTypes || detail.outputType || detail.compareType || detail.inPlaceArgIndex !== undefined
+  ) ? {
+    inputTypes: detail.inputTypes,
+    outputType: detail.outputType,
+    compareType: detail.compareType,
+    inPlaceArgIndex: detail.inPlaceArgIndex,
+  } : undefined;
+
   const handleRun = async () => {
     setIsRunning(true);
     setRunResult(null);
-    const allCases = [...detail.sampleTestCases, ...detail.hiddenTestCases];
-    const result = await runCode(code, language, detail.functionName, allCases);
+    setBenchmarkResult(null);
+
+    let result: RunResult;
+    if (isClassMode && detail.className) {
+      const allClassCases = [
+        ...(detail.classSampleTestCases || []),
+        ...(detail.classHiddenTestCases || []),
+      ];
+      result = await runClassCode(code, language, detail.className, allClassCases);
+    } else {
+      const allCases = [...detail.sampleTestCases, ...detail.hiddenTestCases];
+      result = await runCode(code, language, detail.functionName, allCases, runOptions);
+    }
+
     setRunResult(result);
     setIsRunning(false);
+    if (result.passed === result.total && !result.runtimeError && !isCompleted) {
+      toggleCompleted(problem.id);
+    }
+
+    const hasBenchmark = detail.solutions && detail.benchmarkConfig;
+    if (result.passed === result.total && !result.runtimeError && hasBenchmark) {
+      setIsBenchmarking(true);
+      try {
+        const bResult = await analyzeSolution(
+          code, language, detail.functionName,
+          detail.benchmarkConfig!, detail.solutions!,
+          runOptions
+        );
+        setBenchmarkResult(bResult);
+      } catch {
+        // Benchmark failure is non-critical — silently skip
+      }
+      setIsBenchmarking(false);
+    }
   };
 
   // Compute container style per phase.
@@ -297,26 +354,40 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
         {/* Left panel — description */}
         <div className="w-[45%] shrink-0 overflow-y-auto p-5 border-r border-[var(--border-subtle)] scrollbar-thin">
           <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
-            {detail.description}
+            {renderDescription(detail.description)}
           </p>
 
-          {detail.sampleTestCases.length > 0 && (
+          {(isClassMode ? (detail.classSampleTestCases?.length ?? 0) > 0 : detail.sampleTestCases.length > 0) && (
             <div className="mt-5">
               <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
                 Examples
               </h3>
               <div className="space-y-2">
-                {detail.sampleTestCases.map((tc, i) => (
-                  <div
-                    key={i}
-                    className="rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)] px-3 py-2.5"
-                  >
-                    <div className="text-xs text-[var(--text-muted)] font-medium mb-1">Example {i + 1}</div>
-                    <code className="text-xs text-[var(--text-secondary)] font-mono break-all">
-                      {tc.inputDisplay}
-                    </code>
-                  </div>
-                ))}
+                {isClassMode ? (
+                  detail.classSampleTestCases?.map((tc, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)] px-3 py-2.5"
+                    >
+                      <div className="text-xs text-[var(--text-muted)] font-medium mb-1">Example {i + 1}</div>
+                      <code className="text-xs text-[var(--text-secondary)] font-mono break-all whitespace-pre-wrap">
+                        {tc.inputDisplay}
+                      </code>
+                    </div>
+                  ))
+                ) : (
+                  detail.sampleTestCases.map((tc, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)] px-3 py-2.5"
+                    >
+                      <div className="text-xs text-[var(--text-muted)] font-medium mb-1">Example {i + 1}</div>
+                      <code className="text-xs text-[var(--text-secondary)] font-mono break-all">
+                        {tc.inputDisplay}
+                      </code>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -379,16 +450,67 @@ export function ProblemSolver({ detail, problem, rowElement, onClose }: ProblemS
                   )}
 
                   {allPassed && (
-                    <div className="space-y-1">
-                      {runResult.testResults.map((r, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs text-emerald-500">
-                          <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    <>
+                      <div className="space-y-1">
+                        {runResult.testResults.map((r, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs text-emerald-500">
+                            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span className="text-[var(--text-muted)] font-mono">{r.input}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {isBenchmarking && (
+                        <div className="flex items-center gap-2 mt-4 text-sm text-[var(--text-muted)]">
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                           </svg>
-                          <span className="text-[var(--text-muted)] font-mono">{r.input}</span>
+                          Analyzing complexity...
                         </div>
-                      ))}
-                    </div>
+                      )}
+
+                      {benchmarkResult && (
+                        <div className={`mt-4 rounded-lg border px-4 py-3 ${
+                          benchmarkResult.canDoBetter
+                            ? 'bg-amber-500/5 border-amber-500/20'
+                            : 'bg-emerald-500/5 border-emerald-500/20'
+                        }`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            {benchmarkResult.canDoBetter ? (
+                              <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.745 3.745 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" />
+                              </svg>
+                            )}
+                            <span className={`text-sm font-semibold ${
+                              benchmarkResult.canDoBetter ? 'text-amber-500' : 'text-emerald-500'
+                            }`}>
+                              Your solution: {benchmarkResult.detectedComplexity}
+                            </span>
+                          </div>
+
+                          {benchmarkResult.canDoBetter ? (
+                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                              An <span className="font-semibold text-[var(--text-primary)]">{benchmarkResult.bestTier.complexity}</span> solution
+                              exists{benchmarkResult.bestTier.name ? ` using ${benchmarkResult.bestTier.name}` : ''}.
+                              {benchmarkResult.matchedTier?.hint && (
+                                <span className="text-[var(--text-muted)]"> {benchmarkResult.matchedTier.hint}</span>
+                              )}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-[var(--text-secondary)]">
+                              Optimal! You achieved the best possible time complexity.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {!allPassed && failedResults.length > 0 && (
