@@ -1,5 +1,6 @@
 import { AppProvider } from './context/AppContext';
 import { AuthProvider } from './context/AuthContext';
+import { GroupProvider } from './context/GroupContext';
 import { Header } from './components/Header';
 import { ProblemList } from './components/ProblemList';
 
@@ -19,7 +20,9 @@ function App() {
   return (
     <AuthProvider>
       <AppProvider>
-        <AppContent />
+        <GroupProvider>
+          <AppContent />
+        </GroupProvider>
       </AppProvider>
     </AuthProvider>
   );
