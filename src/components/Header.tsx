@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { useGroup } from '../context/GroupContext';
 import { ContributionGraph } from './ContributionGraph';
 import { AuthModal } from './AuthModal';
+import { GroupPanel } from './GroupPanel';
 
 // Data Sync Button with Popover
 function DataSyncButton() {
@@ -265,8 +267,10 @@ function UserMenuButton() {
 export function Header() {
   const { settings, toggleTheme, stats, userProgress } = useApp();
   const { user, loading: authLoading } = useAuth();
+  const { groupCode, session, members, connectionStatus } = useGroup();
   const [showGraph, setShowGraph] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showGroupPanel, setShowGroupPanel] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const handleMouseEnter = () => {
@@ -438,6 +442,32 @@ export function Header() {
             {/* Data Sync Button */}
             <DataSyncButton />
 
+            {/* Group Session Button */}
+            <button
+              onClick={() => setShowGroupPanel(true)}
+              className={`relative w-10 h-10 rounded-xl border flex items-center justify-center transition-all duration-300 hover:shadow-md ${
+                groupCode
+                  ? 'bg-violet-500 border-violet-500 text-white hover:bg-violet-600'
+                  : 'bg-[var(--bg-elevated)] border-[var(--border-color)] hover:border-[var(--text-muted)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+              title="Group Session"
+              aria-label="Group Session"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              {/* Active session indicator */}
+              {groupCode && session.status === 'running' && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[var(--bg-elevated)] animate-pulse" />
+              )}
+              {/* Member count badge */}
+              {groupCode && members.length > 0 && session.status !== 'running' && connectionStatus === 'connected' && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-violet-600 border border-[var(--bg-elevated)] text-[9px] font-bold text-white flex items-center justify-center">
+                  {members.length}
+                </span>
+              )}
+            </button>
+
             {/* Auth: Sign In button or User menu */}
             {!authLoading && (
               user ? (
@@ -494,6 +524,7 @@ export function Header() {
       </div>
     </header>
     <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+    <GroupPanel isOpen={showGroupPanel} onClose={() => setShowGroupPanel(false)} />
     </>
   );
 }
